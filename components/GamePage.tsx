@@ -1,9 +1,11 @@
-import React, { useRef, useEffect, useCallback, useReducer } from 'react';
+import React, { useRef, useEffect, useCallback, useReducer, useState } from 'react';
 import { Brick, Ball, Paddle, GameStatus, PowerUp, PowerUpType, PowerUpCategory, ActiveEffect, Particle, Star } from '../types.ts';
 
 // --- GAME CONSTANTS ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
+const MOBILE_CANVAS_WIDTH = 350;
+const MOBILE_CANVAS_HEIGHT = 500;
 const PADDLE_INITIAL_WIDTH = 120;
 const PADDLE_HEIGHT = 20;
 const PADDLE_Y_OFFSET = 30;
@@ -622,6 +624,43 @@ const GamePage: React.FC = () => {
     const [state, dispatch] = useReducer(gameReducer, undefined, getInitialState);
     const animationFrameId = useRef<number | null>(null);
     
+    // Mobile detection and responsive state
+    const [isMobile, setIsMobile] = useState(false);
+    const [canvasSize, setCanvasSize] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
+    const [scaleFactor, setScaleFactor] = useState(1);
+
+    // Detect mobile device and screen size
+    useEffect(() => {
+        const checkMobile = () => {
+            const mobile = window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            setIsMobile(mobile);
+            
+            if (mobile) {
+                const maxWidth = Math.min(window.innerWidth - 40, MOBILE_CANVAS_WIDTH);
+                const maxHeight = Math.min(window.innerHeight - 200, MOBILE_CANVAS_HEIGHT);
+                const scale = Math.min(maxWidth / MOBILE_CANVAS_WIDTH, maxHeight / MOBILE_CANVAS_HEIGHT, 1);
+                
+                setCanvasSize({
+                    width: MOBILE_CANVAS_WIDTH,
+                    height: MOBILE_CANVAS_HEIGHT
+                });
+                setScaleFactor(scale);
+            } else {
+                setCanvasSize({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
+                setScaleFactor(1);
+            }
+        };
+
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        window.addEventListener('orientationchange', checkMobile);
+        
+        return () => {
+            window.removeEventListener('resize', checkMobile);
+            window.removeEventListener('orientationchange', checkMobile);
+        };
+    }, []);
+    
     useEffect(() => {
         state.activeEffects.forEach(effect => {
             clearTimeout(effect.timeoutId);
@@ -637,13 +676,35 @@ const GamePage: React.FC = () => {
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const relativeX = e.clientX - rect.left;
-        let paddleX = relativeX - state.paddle.width / 2;
+        const actualCanvasWidth = isMobile ? canvasSize.width : CANVAS_WIDTH;
+        let paddleX = (relativeX / scaleFactor) - state.paddle.width / 2;
         if (paddleX < 0) paddleX = 0;
-        if (paddleX + state.paddle.width > CANVAS_WIDTH) paddleX = CANVAS_WIDTH - state.paddle.width;
+        if (paddleX + state.paddle.width > actualCanvasWidth) paddleX = actualCanvasWidth - state.paddle.width;
         dispatch({ type: 'MOVE_PADDLE', payload: { x: paddleX } });
-    }, [state.paddle.width]);
+    }, [state.paddle.width, isMobile, canvasSize.width, scaleFactor]);
+
+    const handleTouchMove = useCallback((e: TouchEvent) => {
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        if (!canvas || e.touches.length === 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const relativeX = touch.clientX - rect.left;
+        const actualCanvasWidth = isMobile ? canvasSize.width : CANVAS_WIDTH;
+        let paddleX = (relativeX / scaleFactor) - state.paddle.width / 2;
+        if (paddleX < 0) paddleX = 0;
+        if (paddleX + state.paddle.width > actualCanvasWidth) paddleX = actualCanvasWidth - state.paddle.width;
+        dispatch({ type: 'MOVE_PADDLE', payload: { x: paddleX } });
+    }, [state.paddle.width, isMobile, canvasSize.width, scaleFactor]);
 
     const handleClick = useCallback(() => {
+        if (state.status === GameStatus.PLAYING) {
+            dispatch({ type: 'LAUNCH_BALL' });
+        }
+    }, [state.status]);
+
+    const handleTouchStart = useCallback((e: TouchEvent) => {
+        e.preventDefault();
         if (state.status === GameStatus.PLAYING) {
             dispatch({ type: 'LAUNCH_BALL' });
         }
@@ -663,20 +724,34 @@ const GamePage: React.FC = () => {
         const canvas = canvasRef.current;
         if (state.status === GameStatus.PLAYING) {
             animationFrameId.current = requestAnimationFrame(gameLoop);
-            window.addEventListener('mousemove', handleMouseMove);
-            canvas?.addEventListener('click', handleClick);
+            
+            if (isMobile) {
+                canvas?.addEventListener('touchmove', handleTouchMove, { passive: false });
+                canvas?.addEventListener('touchstart', handleTouchStart, { passive: false });
+            } else {
+                window.addEventListener('mousemove', handleMouseMove);
+                canvas?.addEventListener('click', handleClick);
+            }
         } else {
              if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-             window.removeEventListener('mousemove', handleMouseMove);
-             canvas?.removeEventListener('click', handleClick);
+             
+             if (isMobile) {
+                 canvas?.removeEventListener('touchmove', handleTouchMove);
+                 canvas?.removeEventListener('touchstart', handleTouchStart);
+             } else {
+                 window.removeEventListener('mousemove', handleMouseMove);
+                 canvas?.removeEventListener('click', handleClick);
+             }
         }
         return () => {
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
             window.removeEventListener('mousemove', handleMouseMove);
             canvas?.removeEventListener('click', handleClick);
+            canvas?.removeEventListener('touchmove', handleTouchMove);
+            canvas?.removeEventListener('touchstart', handleTouchStart);
             state.activeEffects.forEach(effect => clearTimeout(effect.timeoutId));
         };
-    }, [state.status, gameLoop, handleMouseMove, handleClick, state.activeEffects]);
+    }, [state.status, gameLoop, handleMouseMove, handleClick, handleTouchMove, handleTouchStart, isMobile, state.activeEffects]);
     
     const renderOverlay = () => {
         let title = '';
@@ -721,20 +796,58 @@ const GamePage: React.FC = () => {
     }
 
     return (
-    <div className="flex flex-col justify-center items-center p-4 sm:p-8">
-        <div className="relative shadow-2xl shadow-cyan-500/20" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}>
+    <div className="flex flex-col justify-center items-center p-2 sm:p-8">
+        <div 
+            className="relative shadow-2xl shadow-cyan-500/20" 
+            style={{ 
+                width: canvasSize.width * scaleFactor, 
+                height: canvasSize.height * scaleFactor,
+                maxWidth: '100vw',
+                maxHeight: '70vh'
+            }}
+        >
             <canvas
                 ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                className="bg-slate-900 rounded-lg cursor-pointer"
+                width={canvasSize.width}
+                height={canvasSize.height}
+                className="bg-slate-900 rounded-lg touch-none"
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    transform: `scale(${scaleFactor})`,
+                    transformOrigin: 'top left'
+                }}
             />
             {renderOverlay()}
         </div>
-        <div className="mt-4 text-center text-slate-400 max-w-2xl">
-            <p><strong className="text-cyan-400">How to Play:</strong> Move the mouse to control the paddle. Click to launch the ball.</p>
-            <p><strong className="text-cyan-400">Power-Ups:</strong> Catch falling blocks! Cyan ones are good, Red ones are bad. Good luck!</p>
-        </div>
+        
+        {/* Mobile Controls */}
+        {isMobile && (
+            <div className="mt-4 flex flex-col items-center gap-4 w-full max-w-sm">
+                <button
+                    onClick={() => {
+                        if (state.status === GameStatus.PLAYING) {
+                            dispatch({ type: 'LAUNCH_BALL' });
+                        }
+                    }}
+                    className="w-full px-6 py-3 bg-cyan-500 text-white font-bold rounded-lg shadow-lg active:bg-cyan-600 transform active:scale-95 transition-all duration-150"
+                    disabled={state.status !== GameStatus.PLAYING}
+                >
+                    🚀 Launch Ball
+                </button>
+                <div className="text-center text-slate-400 text-sm">
+                    <p><strong className="text-cyan-400">Touch Controls:</strong> Drag on the game area to move paddle. Tap the Launch Ball button to start.</p>
+                </div>
+            </div>
+        )}
+        
+        {/* Desktop Instructions */}
+        {!isMobile && (
+            <div className="mt-4 text-center text-slate-400 max-w-2xl">
+                <p><strong className="text-cyan-400">How to Play:</strong> Move the mouse to control the paddle. Click to launch the ball.</p>
+                <p><strong className="text-cyan-400">Power-Ups:</strong> Catch falling blocks! Cyan ones are good, Red ones are bad. Good luck!</p>
+            </div>
+        )}
     </div>
     );
 };
