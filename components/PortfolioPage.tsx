@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, ReactNode } from 'react';
-import { PortfolioItem, LinkItem } from '../types';
+import { PortfolioItem, LinkItem } from '../types.ts';
 
 // --- Data ---
 const portfolioData = {

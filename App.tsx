@@ -1,8 +1,8 @@
 import React from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import PortfolioPage from './components/PortfolioPage';
-import GamePage from './components/GamePage';
+import Navbar from './components/Navbar.tsx';
+import PortfolioPage from './components/PortfolioPage.tsx';
+import GamePage from './components/GamePage.tsx';
 
 
 const App: React.FC = () => {

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useReducer } from 'react';
-import { Brick, Ball, Paddle, GameStatus, PowerUp, PowerUpType, PowerUpCategory, ActiveEffect, Particle, Star } from '../types';
+import { Brick, Ball, Paddle, GameStatus, PowerUp, PowerUpType, PowerUpCategory, ActiveEffect, Particle, Star } from '../types.ts';
 
 // --- GAME CONSTANTS ---
 const CANVAS_WIDTH = 800;
