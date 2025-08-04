@@ -53,30 +53,41 @@ interface GameState {
   score: number;
   lives: number;
   level: number;
+  canvasWidth: number;
+  canvasHeight: number;
 }
 
 type GameAction =
   | { type: 'MOVE_PADDLE'; payload: { x: number } }
   | { type: 'UPDATE_GAME' }
-  | { type: 'START_LEVEL' }
+  | { type: 'START_LEVEL'; payload?: { canvasWidth?: number, canvasHeight?: number } }
   | { type: 'LAUNCH_BALL' }
   | { type: 'LOSE_LIFE' }
   | { type: 'BRICK_HIT'; payload: { brickId: string, ballId: string } }
   | { type: 'SPAWN_POWERUP'; payload: { x: number, y: number } }
   | { type: 'ACTIVATE_POWERUP'; payload: { powerUp: PowerUp } }
   | { type: 'DEACTIVATE_POWERUP'; payload: { effectType: PowerUpType } }
-  | { type: 'SPAWN_PARTICLES'; payload: { x: number, y: number, color: string, count: number, speed: number }};
+  | { type: 'SPAWN_PARTICLES'; payload: { x: number, y: number, color: string, count: number, speed: number }}
+  | { type: 'RESET_GAME'; payload: { canvasWidth: number, canvasHeight: number }};
 
-const createBricksForLevel = (level: number): Brick[] => {
+const createBricksForLevel = (level: number, canvasWidth = CANVAS_WIDTH): Brick[] => {
     const bricks: Brick[] = [];
     const rowCount = BRICK_ROW_COUNT + Math.min(level - 1, 3);
+    
+    // Adjust brick layout for mobile
+    const isMobileCanvas = canvasWidth < CANVAS_WIDTH;
+    const columnCount = isMobileCanvas ? 5 : BRICK_COLUMN_COUNT;
+    const brickWidth = isMobileCanvas ? 50 : BRICK_WIDTH;
+    const brickPadding = isMobileCanvas ? 8 : BRICK_PADDING;
+    const offsetLeft = isMobileCanvas ? 20 : BRICK_OFFSET_LEFT;
+    
     for (let r = 0; r < rowCount; r++) {
-        for (let c = 0; c < BRICK_COLUMN_COUNT; c++) {
+        for (let c = 0; c < columnCount; c++) {
             bricks.push({
                 id: `brick-${level}-${r}-${c}`,
-                x: c * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT,
+                x: c * (brickWidth + brickPadding) + offsetLeft,
                 y: r * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP,
-                width: BRICK_WIDTH,
+                width: brickWidth,
                 height: BRICK_HEIGHT,
                 color: BRICK_COLORS[(r + level) % BRICK_COLORS.length],
                 active: true,
@@ -86,43 +97,45 @@ const createBricksForLevel = (level: number): Brick[] => {
     return bricks;
 };
 
-const createInitialBall = (level: number): Ball => ({
+const createInitialBall = (level: number, canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT): Ball => ({
     id: `ball-${Date.now()}`,
-    x: CANVAS_WIDTH / 2,
-    y: CANVAS_HEIGHT - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS,
+    x: canvasWidth / 2,
+    y: canvasHeight - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS,
     radius: BALL_RADIUS,
     dx: 4 + level * 0.5,
     dy: -4 - level * 0.5,
     isThru: false,
 });
 
-const createStars = (): Star[] => {
+const createStars = (canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT): Star[] => {
     return Array.from({ length: STAR_COUNT }).map(() => ({
-        x: Math.random() * CANVAS_WIDTH,
-        y: Math.random() * CANVAS_HEIGHT,
+        x: Math.random() * canvasWidth,
+        y: Math.random() * canvasHeight,
         radius: Math.random() * 1.5,
         alpha: Math.random() * 0.5 + 0.2,
         dAlpha: (Math.random() - 0.5) * 0.01,
     }));
 };
 
-const getInitialState = (): GameState => ({
+const getInitialState = (canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT): GameState => ({
     status: GameStatus.MENU,
     balls: [],
-    paddle: { x: (CANVAS_WIDTH - PADDLE_INITIAL_WIDTH) / 2, width: PADDLE_INITIAL_WIDTH, height: PADDLE_HEIGHT, hasGrab: false },
+    paddle: { x: (canvasWidth - PADDLE_INITIAL_WIDTH) / 2, width: PADDLE_INITIAL_WIDTH, height: PADDLE_HEIGHT, hasGrab: false },
     bricks: [],
     powerUps: [],
     activeEffects: [],
     particles: [],
-    stars: createStars(),
+    stars: createStars(canvasWidth, canvasHeight),
     score: 0,
     lives: INITIAL_LIVES,
     level: 1,
+    canvasWidth,
+    canvasHeight,
 });
 
-const clearAllEffects = (state: GameState): GameState => {
+const clearAllEffects = (state: GameState, canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT): GameState => {
     state.activeEffects.forEach(effect => clearTimeout(effect.timeoutId));
-    const cleanState = getInitialState();
+    const cleanState = getInitialState(canvasWidth, canvasHeight);
     return {
         ...state,
         paddle: cleanState.paddle,
@@ -137,24 +150,27 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
     switch (action.type) {
         case 'START_LEVEL': {
             const isNewGame = state.status === GameStatus.MENU || state.status === GameStatus.GAME_OVER;
-            let resetState = isNewGame ? getInitialState() : state;
+            const canvasWidth = action.payload?.canvasWidth || CANVAS_WIDTH;
+            const canvasHeight = action.payload?.canvasHeight || CANVAS_HEIGHT;
             
-            resetState = clearAllEffects(resetState);
+            let resetState = isNewGame ? getInitialState(canvasWidth, canvasHeight) : state;
+            
+            resetState = clearAllEffects(resetState, canvasWidth, canvasHeight);
 
             const currentLevel = isNewGame ? 1 : state.level + 1;
-            const newBall = createInitialBall(currentLevel);
+            const newBall = createInitialBall(currentLevel, canvasWidth, canvasHeight);
             // Ball is stuck to paddle initially
             newBall.dx = 0;
             newBall.dy = 0;
-            newBall.y = CANVAS_HEIGHT - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS;
+            newBall.y = canvasHeight - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS;
 
             return {
                 ...resetState,
                 level: currentLevel,
                 status: GameStatus.PLAYING,
-                bricks: createBricksForLevel(currentLevel),
+                bricks: createBricksForLevel(currentLevel, canvasWidth),
                 balls: [newBall],
-                paddle: { ...resetState.paddle, x: (CANVAS_WIDTH - PADDLE_INITIAL_WIDTH) / 2, width: PADDLE_INITIAL_WIDTH }
+                paddle: { ...resetState.paddle, x: (canvasWidth - PADDLE_INITIAL_WIDTH) / 2, width: PADDLE_INITIAL_WIDTH }
             };
         }
 
@@ -183,13 +199,13 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
         }
         
         case 'LOSE_LIFE': {
-            const newState = clearAllEffects(state);
+            const newState = clearAllEffects(state, state.canvasWidth, state.canvasHeight);
             const newLives = newState.lives - 1;
             if (newLives <= 0) {
                 return { ...newState, lives: 0, status: GameStatus.GAME_OVER };
             }
             // Reset for next life
-            const newBall = createInitialBall(newState.level);
+            const newBall = createInitialBall(newState.level, state.canvasWidth, state.canvasHeight);
             newBall.dx = 0;
             newBall.dy = 0;
             return { ...newState, lives: newLives, status: GameStatus.PLAYING, balls: [newBall] };
@@ -336,7 +352,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
             // Update powerups
             const updatedPowerUps = state.powerUps
                 .map(p => ({ ...p, y: p.y + POWERUP_SPEED }))
-                .filter(p => p.y < CANVAS_HEIGHT);
+                .filter(p => p.y < state.canvasHeight);
             
              // Add trails for powerups
             updatedPowerUps.forEach(p => {
@@ -349,8 +365,8 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
             for (const powerUp of state.powerUps) {
                 if (powerUp.x < state.paddle.x + state.paddle.width &&
                     powerUp.x + powerUp.width > state.paddle.x &&
-                    powerUp.y + powerUp.height > CANVAS_HEIGHT - PADDLE_Y_OFFSET - PADDLE_HEIGHT &&
-                    powerUp.y < CANVAS_HEIGHT - PADDLE_Y_OFFSET) 
+                    powerUp.y + powerUp.height > state.canvasHeight - PADDLE_Y_OFFSET - PADDLE_HEIGHT &&
+                    powerUp.y < state.canvasHeight - PADDLE_Y_OFFSET) 
                 {
                     return gameReducer(newState, { type: 'ACTIVATE_POWERUP', payload: { powerUp } });
                 }
@@ -373,7 +389,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
                 let newBall = {...ball};
 
                 // Wall collision
-                if (newBallX + ball.radius > CANVAS_WIDTH || newBallX - ball.radius < 0) {
+                if (newBallX + ball.radius > state.canvasWidth || newBallX - ball.radius < 0) {
                     newBall.dx = -newBall.dx;
                     newState = gameReducer(newState, {type: 'SPAWN_PARTICLES', payload: {x: ball.x, y:ball.y, color: '#FFFFFF', count: 5, speed: 1}});
                 }
@@ -383,8 +399,8 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
                 }
                 
                 // Paddle collision
-                if (newBallY + ball.radius > CANVAS_HEIGHT - PADDLE_Y_OFFSET - state.paddle.height &&
-                    newBallY - ball.radius < CANVAS_HEIGHT - PADDLE_Y_OFFSET &&
+                if (newBallY + ball.radius > state.canvasHeight - PADDLE_Y_OFFSET - state.paddle.height &&
+                    newBallY - ball.radius < state.canvasHeight - PADDLE_Y_OFFSET &&
                     newBallX + ball.radius > state.paddle.x &&
                     newBallX - ball.radius < state.paddle.x + state.paddle.width) {
                     
@@ -393,7 +409,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
                     if(state.paddle.hasGrab) {
                         newBall.dx = 0;
                         newBall.dy = 0;
-                        newBall.y = CANVAS_HEIGHT - PADDLE_Y_OFFSET - PADDLE_HEIGHT - ball.radius;
+                        newBall.y = state.canvasHeight - PADDLE_Y_OFFSET - PADDLE_HEIGHT - ball.radius;
                     } else {
                         newBall.dy = -newBall.dy;
                         let collidePoint = newBallX - (state.paddle.x + state.paddle.width / 2);
@@ -415,7 +431,7 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
                 if (brickHitOccurred) continue;
                 
                 // Bottom wall (lose ball)
-                if (newBallY + ball.radius < CANVAS_HEIGHT) {
+                if (newBallY + ball.radius < state.canvasHeight) {
                     nextBalls.push({...newBall, x: newBall.x + newBall.dx, y: newBall.y + newBall.dy});
                 }
             }
@@ -429,6 +445,9 @@ const gameReducer = (state: GameState, action: GameAction): GameState => {
             }
             
             return newState;
+        }
+        case 'RESET_GAME': {
+            return getInitialState(action.payload.canvasWidth, action.payload.canvasHeight);
         }
         default:
             return state;
@@ -513,11 +532,11 @@ const drawPowerUpIcon = (ctx: CanvasRenderingContext2D, powerUp: PowerUp) => {
     }
 }
 
-const drawCanvas = (ctx: CanvasRenderingContext2D, state: GameState) => {
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+const drawCanvas = (ctx: CanvasRenderingContext2D, state: GameState, canvasWidth = CANVAS_WIDTH, canvasHeight = CANVAS_HEIGHT) => {
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     // Black background
     ctx.fillStyle = '#020617'; // slate-950
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Stars
     state.stars.forEach(star => {
@@ -528,13 +547,14 @@ const drawCanvas = (ctx: CanvasRenderingContext2D, state: GameState) => {
     });
     
     // UI
-    ctx.font = '20px Inter, sans-serif';
+    const fontSize = canvasWidth < CANVAS_WIDTH ? 16 : 20;
+    ctx.font = `${fontSize}px Inter, sans-serif`;
     ctx.fillStyle = '#E2E8F0';
     ctx.shadowColor = '#E2E8F0';
     ctx.shadowBlur = 5;
     ctx.fillText(`Score: ${state.score}`, 20, 40);
-    ctx.fillText(`Level: ${state.level}`, CANVAS_WIDTH / 2 - 40, 40);
-    ctx.fillText(`Lives: ${'❤️'.repeat(state.lives)}`, CANVAS_WIDTH - 120, 40);
+    ctx.fillText(`Level: ${state.level}`, canvasWidth / 2 - 40, 40);
+    ctx.fillText(`Lives: ${'❤️'.repeat(state.lives)}`, canvasWidth - 120, 40);
     ctx.shadowBlur = 0;
 
     // Bricks
@@ -553,7 +573,7 @@ const drawCanvas = (ctx: CanvasRenderingContext2D, state: GameState) => {
     // Paddle
     const paddleColor = state.paddle.hasGrab ? '#F59E0B' : '#6366F1';
     ctx.beginPath();
-    ctx.rect(state.paddle.x, CANVAS_HEIGHT - PADDLE_Y_OFFSET - state.paddle.height, state.paddle.width, state.paddle.height);
+    ctx.rect(state.paddle.x, canvasHeight - PADDLE_Y_OFFSET - state.paddle.height, state.paddle.width, state.paddle.height);
     ctx.fillStyle = paddleColor;
     ctx.shadowColor = paddleColor;
     ctx.shadowBlur = 15;
@@ -621,13 +641,14 @@ const drawCanvas = (ctx: CanvasRenderingContext2D, state: GameState) => {
 // --- MAIN COMPONENT ---
 const GamePage: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [state, dispatch] = useReducer(gameReducer, undefined, getInitialState);
+    const [state, dispatch] = useReducer(gameReducer, undefined, () => getInitialState(CANVAS_WIDTH, CANVAS_HEIGHT));
     const animationFrameId = useRef<number | null>(null);
     
     // Mobile detection and responsive state
     const [isMobile, setIsMobile] = useState(false);
     const [canvasSize, setCanvasSize] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
     const [scaleFactor, setScaleFactor] = useState(1);
+    const [debugInfo, setDebugInfo] = useState({ lastTouch: 'None', paddleX: 0, eventCount: 0 });
 
     // Detect mobile device and screen size
     useEffect(() => {
@@ -660,6 +681,19 @@ const GamePage: React.FC = () => {
             window.removeEventListener('orientationchange', checkMobile);
         };
     }, []);
+
+    // Reset game when canvas size changes and we're in menu
+    useEffect(() => {
+        if (state.status === GameStatus.MENU) {
+            const currentCanvasWidth = isMobile ? MOBILE_CANVAS_WIDTH : CANVAS_WIDTH;
+            const currentCanvasHeight = isMobile ? MOBILE_CANVAS_HEIGHT : CANVAS_HEIGHT;
+            
+            // Only reset if dimensions actually changed
+            if (canvasSize.width !== currentCanvasWidth || canvasSize.height !== currentCanvasHeight) {
+                dispatch({ type: 'RESET_GAME', payload: { canvasWidth: currentCanvasWidth, canvasHeight: currentCanvasHeight } });
+            }
+        }
+    }, [canvasSize, isMobile, state.status]);
     
     useEffect(() => {
         state.activeEffects.forEach(effect => {
@@ -681,6 +715,13 @@ const GamePage: React.FC = () => {
         if (paddleX < 0) paddleX = 0;
         if (paddleX + state.paddle.width > actualCanvasWidth) paddleX = actualCanvasWidth - state.paddle.width;
         dispatch({ type: 'MOVE_PADDLE', payload: { x: paddleX } });
+        
+        // Update debug info
+        setDebugInfo(prev => ({
+            lastTouch: `Mouse: ${Math.round(relativeX)}`,
+            paddleX: Math.round(paddleX),
+            eventCount: prev.eventCount + 1
+        }));
     }, [state.paddle.width, isMobile, canvasSize.width, scaleFactor]);
 
     const handleTouchMove = useCallback((e: TouchEvent) => {
@@ -695,6 +736,13 @@ const GamePage: React.FC = () => {
         if (paddleX < 0) paddleX = 0;
         if (paddleX + state.paddle.width > actualCanvasWidth) paddleX = actualCanvasWidth - state.paddle.width;
         dispatch({ type: 'MOVE_PADDLE', payload: { x: paddleX } });
+        
+        // Update debug info
+        setDebugInfo(prev => ({
+            lastTouch: `Touch: ${Math.round(relativeX)}`,
+            paddleX: Math.round(paddleX),
+            eventCount: prev.eventCount + 1
+        }));
     }, [state.paddle.width, isMobile, canvasSize.width, scaleFactor]);
 
     const handleClick = useCallback(() => {
@@ -717,32 +765,28 @@ const GamePage: React.FC = () => {
 
     useEffect(() => {
         const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) drawCanvas(ctx, state);
-    }, [state]);
+        if (ctx) drawCanvas(ctx, state, canvasSize.width, canvasSize.height);
+    }, [state, canvasSize]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
+        
+        // Always attach touch/mouse events when the component is mounted
+        if (isMobile) {
+            canvas?.addEventListener('touchmove', handleTouchMove, { passive: false });
+            canvas?.addEventListener('touchstart', handleTouchStart, { passive: false });
+        } else {
+            window.addEventListener('mousemove', handleMouseMove);
+            canvas?.addEventListener('click', handleClick);
+        }
+        
+        // Handle game loop based on status
         if (state.status === GameStatus.PLAYING) {
             animationFrameId.current = requestAnimationFrame(gameLoop);
-            
-            if (isMobile) {
-                canvas?.addEventListener('touchmove', handleTouchMove, { passive: false });
-                canvas?.addEventListener('touchstart', handleTouchStart, { passive: false });
-            } else {
-                window.addEventListener('mousemove', handleMouseMove);
-                canvas?.addEventListener('click', handleClick);
-            }
         } else {
              if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-             
-             if (isMobile) {
-                 canvas?.removeEventListener('touchmove', handleTouchMove);
-                 canvas?.removeEventListener('touchstart', handleTouchStart);
-             } else {
-                 window.removeEventListener('mousemove', handleMouseMove);
-                 canvas?.removeEventListener('click', handleClick);
-             }
         }
+        
         return () => {
             if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
             window.removeEventListener('mousemove', handleMouseMove);
@@ -779,7 +823,9 @@ const GamePage: React.FC = () => {
         if (!show) return null;
 
         const handleButtonClick = () => {
-            dispatch({type: 'START_LEVEL'});
+            const currentCanvasWidth = isMobile ? MOBILE_CANVAS_WIDTH : CANVAS_WIDTH;
+            const currentCanvasHeight = isMobile ? MOBILE_CANVAS_HEIGHT : CANVAS_HEIGHT;
+            dispatch({type: 'START_LEVEL', payload: { canvasWidth: currentCanvasWidth, canvasHeight: currentCanvasHeight }});
         }
 
         return (
@@ -835,6 +881,20 @@ const GamePage: React.FC = () => {
                 >
                     🚀 Launch Ball
                 </button>
+                
+                {/* Debug Panel */}
+                <div className="w-full bg-slate-800 p-3 rounded-lg text-xs">
+                    <div className="text-cyan-400 font-bold mb-2">🔧 Touch Debug Info</div>
+                    <div className="grid grid-cols-2 gap-2 text-slate-300">
+                        <div>Device: {isMobile ? 'Mobile' : 'Desktop'}</div>
+                        <div>Events: {debugInfo.eventCount}</div>
+                        <div>Last Input: {debugInfo.lastTouch}</div>
+                        <div>Paddle X: {debugInfo.paddleX}</div>
+                        <div>Canvas: {canvasSize.width}x{canvasSize.height}</div>
+                        <div>Scale: {scaleFactor.toFixed(2)}</div>
+                    </div>
+                </div>
+                
                 <div className="text-center text-slate-400 text-sm">
                     <p><strong className="text-cyan-400">Touch Controls:</strong> Drag on the game area to move paddle. Tap the Launch Ball button to start.</p>
                 </div>

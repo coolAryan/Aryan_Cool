@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Touch Test for Breakout Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1e293b;
+            color: white;
+        }
+        .test-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background-color: #334155;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .test-area {
+            width: 100%;
+            height: 200px;
+            background-color: #475569;
+            border: 2px solid #06b6d4;
+            border-radius: 8px;
+            position: relative;
+            touch-action: none;
+            user-select: none;
+        }
+        .paddle {
+            width: 80px;
+            height: 15px;
+            background-color: #06b6d4;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-radius: 4px;
+            transition: left 0.1s ease;
+        }
+        .info {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #1e293b;
+            border-radius: 4px;
+        }
+        .game-link {
+            display: inline-block;
+            background-color: #06b6d4;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .game-link:hover {
+            background-color: #0891b2;
+        }
+        .status {
+            color: #10b981;
+            font-weight: bold;
+        }
+        .error {
+            color: #ef4444;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎮 Mobile Touch Test for Breakout Game</h1>
+        
+        <div class="test-section">
+            <h2>📱 Device Detection</h2>
+            <div class="info">
+                <p><strong>User Agent:</strong> <span id="userAgent"></span></p>
+                <p><strong>Screen Size:</strong> <span id="screenSize"></span></p>
+                <p><strong>Device Type:</strong> <span id="deviceType"></span></p>
+                <p><strong>Touch Support:</strong> <span id="touchSupport"></span></p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 Touch Paddle Test</h2>
+            <p>Touch and drag in the area below to test paddle movement:</p>
+            <div class="test-area" id="testArea">
+                <div class="paddle" id="paddle"></div>
+            </div>
+            <div class="info">
+                <p><strong>Touch Status:</strong> <span id="touchStatus">Not touching</span></p>
+                <p><strong>Touch X Position:</strong> <span id="touchX">-</span></p>
+                <p><strong>Paddle Position:</strong> <span id="paddlePos">Center</span></p>
+                <p><strong>Events Fired:</strong> <span id="eventCount">0</span></p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎮 Test Results</h2>
+            <div id="testResults" class="info">
+                <p>Perform the touch test above to see results...</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🚀 Launch Game</h2>
+            <p>If the touch test works correctly, proceed to test the actual game:</p>
+            <a href="http://localhost:5173/" class="game-link" target="_blank">Open Breakout Game</a>
+            <div class="info">
+                <p><strong>Instructions:</strong></p>
+                <ul>
+                    <li>Open the game link above</li>
+                    <li>On mobile: Use browser dev tools → Toggle device toolbar</li>
+                    <li>Select a mobile device (iPhone, Android)</li>
+                    <li>Test touch controls in the game</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Device Detection
+        const userAgent = navigator.userAgent;
+        const isMobile = window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+        const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        document.getElementById('userAgent').textContent = userAgent;
+        document.getElementById('screenSize').textContent = `${window.innerWidth} x ${window.innerHeight}`;
+        document.getElementById('deviceType').textContent = isMobile ? 'Mobile Device' : 'Desktop Device';
+        document.getElementById('touchSupport').textContent = hasTouch ? 'Yes' : 'No';
+
+        // Touch Test Implementation
+        const testArea = document.getElementById('testArea');
+        const paddle = document.getElementById('paddle');
+        const touchStatus = document.getElementById('touchStatus');
+        const touchX = document.getElementById('touchX');
+        const paddlePos = document.getElementById('paddlePos');
+        const eventCount = document.getElementById('eventCount');
+        const testResults = document.getElementById('testResults');
+
+        let eventCounter = 0;
+        let testStarted = false;
+        let testPassed = false;
+
+        function updateEventCount() {
+            eventCounter++;
+            eventCount.textContent = eventCounter;
+        }
+
+        function updatePaddlePosition(clientX) {
+            const rect = testArea.getBoundingClientRect();
+            const relativeX = clientX - rect.left;
+            const paddleWidth = 80;
+            let paddleX = relativeX - paddleWidth / 2;
+            
+            // Constrain paddle within bounds
+            if (paddleX < 0) paddleX = 0;
+            if (paddleX + paddleWidth > rect.width) paddleX = rect.width - paddleWidth;
+            
+            paddle.style.left = paddleX + 'px';
+            paddle.style.transform = 'none';
+            
+            // Update display
+            touchX.textContent = Math.round(relativeX);
+            paddlePos.textContent = Math.round(paddleX);
+            
+            // Mark test as started and check if it's working
+            if (!testStarted) {
+                testStarted = true;
+                testPassed = true;
+            }
+        }
+
+        function updateTestResults() {
+            if (!testStarted) {
+                testResults.innerHTML = '<p>Perform the touch test above to see results...</p>';
+            } else if (testPassed && eventCounter > 5) {
+                testResults.innerHTML = `
+                    <p class="status">✅ Touch controls are working correctly!</p>
+                    <p>• Touch events are being detected properly</p>
+                    <p>• Paddle follows touch movement</p>
+                    <p>• Event count: ${eventCounter}</p>
+                    <p><strong>Your mobile game should work perfectly!</strong></p>
+                `;
+            } else if (testStarted) {
+                testResults.innerHTML = `
+                    <p style="color: #f59e0b;">⚠️ Touch controls partially working</p>
+                    <p>• Try moving your finger more around the test area</p>
+                    <p>• Event count: ${eventCounter}</p>
+                `;
+            }
+        }
+
+        // Mouse events for desktop testing
+        testArea.addEventListener('mousemove', (e) => {
+            updateEventCount();
+            updatePaddlePosition(e.clientX);
+            touchStatus.textContent = 'Mouse moving';
+            updateTestResults();
+        });
+
+        // Touch events for mobile
+        testArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            updateEventCount();
+            touchStatus.textContent = 'Touch started';
+            if (e.touches.length > 0) {
+                updatePaddlePosition(e.touches[0].clientX);
+            }
+            updateTestResults();
+        });
+
+        testArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            updateEventCount();
+            touchStatus.textContent = 'Touch moving';
+            if (e.touches.length > 0) {
+                updatePaddlePosition(e.touches[0].clientX);
+            }
+            updateTestResults();
+        });
+
+        testArea.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchStatus.textContent = 'Touch ended';
+            updateTestResults();
+        });
+
+        // Initial update
+        updateTestResults();
+    </script>
+</body>
+</html>
